@@ -14,6 +14,8 @@ import os
 from pathlib import Path
 from django.utils import timezone
 from dotenv import load_dotenv
+from datetime import timedelta
+from rest_framework.settings import api_settings
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -40,6 +42,8 @@ CORS_ALLOWED_ORIGINS = [
     for origin in raw_cors_origins.split(",")
     if origin.strip()
 ]
+
+CORS_ALLOW_CREDENTIALS = True
 
 # Application definition
 
@@ -92,6 +96,26 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'saas_backend.wsgi.application'
+
+
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+    ),
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 20,
+}
+
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "AUTH_HEADER_TYPES": ("Bearer",),
+}
 
 
 # Database
