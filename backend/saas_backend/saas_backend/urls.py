@@ -34,6 +34,10 @@ urlpatterns = [
     # Rutas de accounts (auth/me, google, etc.) - las creamos ahora
     path("api/", include("accounts.api.urls")),
 
+
+    # Cash
+    path("api/", include("cash.api.urls")),
+
     # Más adelante: cash, attendance, orders, etc.
     # path("api/", include("cash.api.urls")),
 ]
