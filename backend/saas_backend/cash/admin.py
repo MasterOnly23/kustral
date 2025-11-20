@@ -11,11 +11,18 @@ class DailyCashAdmin(admin.ModelAdmin):
         "branch",
         "date",
         "total_sales",
-        "status",
         "difference",
         "created_at",
+        # "status",
+        "is_confirmed",
+        "closed_by",
     )
     list_filter = ("company", "branch", "status", "date")
     search_fields = ("company__name", "branch__name")
     date_hierarchy = "date"
     ordering = ("-date", "-created_at")
+
+
+    @admin.display(boolean=True, description="Confirmado")
+    def is_confirmed(self, obj):
+        return obj.status == obj.Status.CONFIRMED
