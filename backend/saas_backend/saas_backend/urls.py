@@ -38,6 +38,11 @@ urlpatterns = [
     # Cash
     path("api/", include("cash.api.urls")),
 
+
+    # Attendance
+    path("api/", include("attendance.api.urls")),
+
+
     # Más adelante: cash, attendance, orders, etc.
     # path("api/", include("cash.api.urls")),
 ]
