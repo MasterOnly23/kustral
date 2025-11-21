@@ -2,6 +2,8 @@
 __pycache__/
 *.pyc
 venv/
+management/
+jwt_infinito.py
 
 # Environment
 .env
