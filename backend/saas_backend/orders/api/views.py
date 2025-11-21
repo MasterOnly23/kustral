@@ -1,0 +1,223 @@
+from django.utils import timezone
+from rest_framework import viewsets, permissions
+from rest_framework.decorators import action
+from rest_framework.response import Response
+
+from orders.models import InternalOrder
+from .serializers import InternalOrderSerializer
+from accounts.models import User
+from rest_framework.exceptions import ValidationError
+
+
+class InternalOrderViewSet(viewsets.ModelViewSet):
+    queryset = InternalOrder.objects.select_related(
+        "company", "branch", "created_by"
+    ).prefetch_related("items")
+    serializer_class = InternalOrderSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    # -------------------------------------------------
+    # FILTRADO SEGÚN ROL
+    # -------------------------------------------------
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+
+        # Superuser ve todo
+        if user.is_superuser or getattr(user, "is_super_admin_saas", False):
+            return qs
+
+        # Si no tiene empresa → nada
+        if not user.company_id:
+            return qs.none()
+
+        # Admin Empresa → ve toda la empresa
+        if user.role == User.Role.ADMIN_COMPANY:
+            return qs.filter(company=user.company)
+
+        # Encargado → ve solo pedidos de su sucursal
+        if user.role == User.Role.BRANCH_MANAGER:
+            return qs.filter(company=user.company, branch=user.branch)
+
+        # Empleado → no participa
+        return qs.none()
+
+    # -------------------------------------------------
+    # RESPUESTAS UNIFORMES
+    # -------------------------------------------------
+    def list(self, request, *args, **kwargs):
+        qs = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(qs)
+        ser = self.get_serializer(page or qs, many=True)
+
+        if page is not None:
+            return Response({
+                "status": "success",
+                "message": "Listado obtenido correctamente.",
+                "data": {
+                    "count": qs.count(),
+                    "next": self.paginator.get_next_link(),
+                    "previous": self.paginator.get_previous_link(),
+                    "results": ser.data
+                }
+            })
+
+        return Response({
+            "status": "success",
+            "message": "Listado obtenido correctamente.",
+            "data": ser.data
+        })
+
+    def retrieve(self, request, *args, **kwargs):
+        ser = self.get_serializer(self.get_object())
+        return Response({
+            "status": "success",
+            "message": "Pedido obtenido correctamente.",
+            "data": ser.data
+        })
+
+    def create(self, request, *args, **kwargs):
+        user = request.user
+
+        # Solo Encargado, Admin Empresa o Superuser pueden crear
+        if user.role not in [User.Role.BRANCH_MANAGER, User.Role.ADMIN_COMPANY] and \
+        not (user.is_superuser or getattr(user, "is_super_admin_saas", False)):
+            return Response(
+                {
+                    "status": "error",
+                    "message": "No tiene permiso para crear pedidos.",
+                },
+                status=403,
+            )
+
+        data = request.data.copy()
+
+        # ---- Encargado de sucursal ----
+        if user.role == User.Role.BRANCH_MANAGER and not user.is_superuser:
+            if not user.company_id or not user.branch_id:
+                raise ValidationError("El usuario debe tener empresa y sucursal asignadas.")
+            data["company"] = user.company_id
+            data["branch"] = user.branch_id
+            data["created_by"] = user.id
+
+        # ---- Admin Empresa ----
+        elif user.role == User.Role.ADMIN_COMPANY and not user.is_superuser:
+            if not user.company_id:
+                raise ValidationError("El usuario debe tener empresa asignada.")
+            # La sucursal LA ELIGE en el body
+            branch_id = data.get("branch")
+            if not branch_id:
+                raise ValidationError("Debe indicar la sucursal (branch) para el pedido.")
+            data["company"] = user.company_id
+            data["created_by"] = user.id
+
+        # ---- Superuser / Super Admin SaaS ----
+        else:
+            # Puede mandar company y branch en el body
+            if not data.get("company"):
+                raise ValidationError("Debe indicar la empresa (company) para el pedido.")
+            if not data.get("branch"):
+                raise ValidationError("Debe indicar la sucursal (branch) para el pedido.")
+            data["created_by"] = user.id
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        order = serializer.save()
+
+        return Response(
+            {
+                "status": "success",
+                "message": "Pedido creado correctamente.",
+                "data": self.get_serializer(order).data,
+            },
+            status=201,
+        )
+
+    # -------------------------------------------------
+    # REGLAS PARA EDITAR
+    # -------------------------------------------------
+    def update(self, request, *args, **kwargs):
+        order = self.get_object()
+        user = request.user
+
+        if order.status != InternalOrder.Status.PENDING and \
+           not user.is_superuser:
+            return Response({
+                "status": "error",
+                "message": "Solo se puede editar pedidos en estado PENDING."
+            }, 400)
+
+        return super().update(request, *args, **kwargs)
+
+    # -------------------------------------------------
+    # ACCIONES DE ESTADO
+    # -------------------------------------------------
+    def _change_status(self, order, new_status, user, date_field, user_field):
+        setattr(order, date_field, timezone.now())
+        setattr(order, user_field, user)
+        order.status = new_status
+        order.save()
+
+        return Response({
+            "status": "success",
+            "message": f"Pedido actualizado a {new_status}.",
+            "data": self.get_serializer(order).data
+        })
+
+    @action(detail=True, methods=["post"])
+    def set_in_process(self, request, pk=None):
+        order = self.get_object()
+        user = request.user
+
+        if user.role != User.Role.ADMIN_COMPANY and not user.is_superuser:
+            return Response({"status": "error", "message": "No autorizado."}, 403)
+
+        if order.status != InternalOrder.Status.PENDING:
+            return Response({"status": "error", "message": "Sólo se puede pasar desde PENDING."}, 400)
+
+        return self._change_status(order, InternalOrder.Status.IN_PROCESS, user,
+                                   "in_process_date", "in_process_by")
+
+    @action(detail=True, methods=["post"])
+    def set_sent(self, request, pk=None):
+        order = self.get_object()
+        user = request.user
+
+        if user.role != User.Role.ADMIN_COMPANY and not user.is_superuser:
+            return Response({"status": "error", "message": "No autorizado."}, 403)
+
+        if order.status != InternalOrder.Status.IN_PROCESS:
+            return Response({"status": "error", "message": "Debe estar en IN_PROCESS."}, 400)
+
+        return self._change_status(order, InternalOrder.Status.SENT, user,
+                                   "sent_date", "sent_by")
+
+    @action(detail=True, methods=["post"])
+    def set_delivered(self, request, pk=None):
+        order = self.get_object()
+        user = request.user
+
+        if user.role != User.Role.BRANCH_MANAGER and not user.is_superuser:
+            return Response({"status": "error", "message": "No autorizado."}, 403)
+
+        if order.branch_id != user.branch_id:
+            return Response({"status": "error", "message": "Sólo su sucursal puede confirmar."}, 403)
+
+        if order.status != InternalOrder.Status.SENT:
+            return Response({"status": "error", "message": "Debe estar en SENT."}, 400)
+
+        return self._change_status(order, InternalOrder.Status.DELIVERED, user,
+                                   "delivered_date", "delivered_by")
+
+    @action(detail=True, methods=["post"])
+    def set_cancelled(self, request, pk=None):
+        order = self.get_object()
+        user = request.user
+
+        if user.role not in [User.Role.ADMIN_COMPANY] and not user.is_superuser:
+            if not (user.role == User.Role.BRANCH_MANAGER and
+                    order.status == InternalOrder.Status.PENDING):
+                return Response({"status": "error", "message": "No autorizado."}, 403)
+
+        return self._change_status(order, InternalOrder.Status.CANCELLED, user,
+                                   "cancelled_date", "cancelled_by")

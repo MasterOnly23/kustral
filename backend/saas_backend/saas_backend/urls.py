@@ -42,6 +42,9 @@ urlpatterns = [
     # Attendance
     path("api/", include("attendance.api.urls")),
 
+    # Orders
+    path("api/", include("orders.api.urls")),
+
 
     # Más adelante: cash, attendance, orders, etc.
     # path("api/", include("cash.api.urls")),
