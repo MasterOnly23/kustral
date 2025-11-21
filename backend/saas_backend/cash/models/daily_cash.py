@@ -87,17 +87,31 @@ class DailyCash(MultiTenantModel):
         help_text="Usuario que confirmó el cierre.",
     )
 
+    is_deleted = models.BooleanField(
+        default=False,
+        help_text="Indica si el cierre fue eliminado lógicamente."
+    )
+
+
     class Meta:
         verbose_name = "Cierre de caja diario"
         verbose_name_plural = "Cierres de caja diarios"
-        # Una caja por empresa + sucursal + día
+
+        indexes = [
+            models.Index(fields=["company", "branch", "date"]),
+            models.Index(fields=["is_deleted"]),
+        ]
+
         constraints = [
             models.UniqueConstraint(
                 fields=["company", "branch", "date"],
-                name="unique_daily_cash_per_branch_and_date",
+                condition=models.Q(is_deleted=False),
+                name="unique_daily_cash_active_per_branch_and_date",
             )
         ]
+
         ordering = ["-date", "-created_at"]
+
 
     def __str__(self):
         company_name = self.company.name if self.company else "Sin empresa"

@@ -1,7 +1,11 @@
 # cash/admin.py
 
 from django.contrib import admin
-from .models import DailyCash
+from .models import DailyCash, DailyCashPhoto
+
+class DailyCashPhotoInline(admin.TabularInline):
+    model = DailyCashPhoto
+    extra = 1
 
 
 @admin.register(DailyCash)
@@ -16,8 +20,9 @@ class DailyCashAdmin(admin.ModelAdmin):
         # "status",
         "is_confirmed",
         "closed_by",
+        "is_deleted",
     )
-    list_filter = ("company", "branch", "status", "date")
+    list_filter = ("company", "branch", "status", "date", "is_deleted")
     search_fields = ("company__name", "branch__name")
     date_hierarchy = "date"
     ordering = ("-date", "-created_at")
