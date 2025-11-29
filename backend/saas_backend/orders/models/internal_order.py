@@ -128,11 +128,32 @@ class InternalOrder(MultiTenantModel):
         related_name="internal_orders_cancelled",
         help_text="Usuario que canceló el pedido.",
     )
+    is_deleted = models.BooleanField(
+            default=False,
+            help_text="Indica si el pedido fue eliminado lógicamente."
+        )
+    deleted_by = models.ForeignKey(
+            settings.AUTH_USER_MODEL,
+            null=True,
+            blank=True,
+            on_delete=models.SET_NULL,
+            related_name="internal_orders_deleted",
+            help_text="Usuario que marcó el pedido como eliminado.",
+        )
+    deleted_at = models.DateTimeField(
+            null=True,
+            blank=True,
+            help_text="Fecha y hora en que se marcó como eliminado.",
+    )
 
     class Meta:
         verbose_name = "Pedido interno"
         verbose_name_plural = "Pedidos internos"
-        ordering = ["-requested_date", "-created_at"]
+        indexes = [
+            models.Index(fields=["company", "branch", "status"]),
+            models.Index(fields=["is_deleted"]),
+        ]
+        ordering = ["-created_at"]
 
     def __str__(self):
         return f"Pedido #{self.id} - {self.branch.name} - {self.get_status_display()}"
