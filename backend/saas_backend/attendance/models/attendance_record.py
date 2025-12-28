@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 from core.models import MultiTenantModel
@@ -36,6 +37,15 @@ class AttendanceRecord(MultiTenantModel):
     notes = models.TextField(
         blank=True,
         help_text="Comentarios u observaciones.",
+    )
+    is_deleted = models.BooleanField(default=False)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="attendance_deleted"
     )
 
     class Meta:

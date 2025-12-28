@@ -27,7 +27,7 @@ class AttendanceRecordViewSet(viewsets.ModelViewSet):
 
     # ---------- FILTRADO POR ROL ----------
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = super().get_queryset().filter(is_deleted=False)
         user = self.request.user
 
         # Superuser o Super Admin SaaS ven todo
@@ -160,7 +160,10 @@ class AttendanceRecordViewSet(viewsets.ModelViewSet):
                     status=403,
                 )
 
-        super().destroy(request, *args, **kwargs)
+        instance.is_deleted = True
+        instance.deleted_at = timezone.now()
+        instance.deleted_by = request.user
+        instance.save(update_fields=["is_deleted", "deleted_at", "deleted_by"])
         return Response(
             {
                 "status": "success",
