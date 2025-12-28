@@ -47,6 +47,9 @@ urlpatterns = [
     # Orders
     path("api/", include("orders.api.urls")),
 
+    # Dashboard
+    path("api/", include("dashboard.api.urls")),
+
 
     # Más adelante: cash, attendance, orders, etc.
     # path("api/", include("cash.api.urls")),
